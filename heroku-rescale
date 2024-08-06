@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import subprocess
+import re
+import argparse
+
+def get_dynos_status(remote):
+    # Run the 'heroku ps -r REMOTE' command
+    command = ['heroku', 'ps', '-r', remote]
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print("Error running the command:", result.stderr)
+        return None
+
+    return result.stdout
+
+def parse_dynos(output):
+    # Parse the output to extract dyno information
+    dyno_pattern = re.compile(r'^(\w+)\.(\d+)')
+    dyno_counts = {}
+
+    for line in output.splitlines():
+        match = dyno_pattern.match(line)
+        if match:
+            dyno_type = match.group(1)
+            dyno_counts[dyno_type] = dyno_counts.get(dyno_type, 0) + 1
+
+    return dyno_counts
+
+def generate_scale_commands(dyno_counts, remote):
+    scale_down_command = "heroku ps:scale "
+    scale_up_command = "heroku ps:scale "
+
+    # Construct the scale down and scale up commands
+    for dyno_type, count in dyno_counts.items():
+        scale_down_command += f"{dyno_type}=0 "
+        scale_up_command += f"{dyno_type}={count} "
+
+    return scale_down_command.strip() + f" -r {remote}", scale_up_command.strip() + f" -r {remote}"
+
+def main():
+    parser = argparse.ArgumentParser(description='Generate Heroku dyno scale commands.')
+    parser.add_argument('remote', type=str, help='The Heroku remote to query')
+    args = parser.parse_args()
+
+    dyno_output = get_dynos_status(args.remote)
+
+    if dyno_output is not None:
+        dyno_counts = parse_dynos(dyno_output)
+        scale_down_cmd, scale_up_cmd = generate_scale_commands(dyno_counts, args.remote)
+
+        print("\n\nScale Down Command:\n\n", scale_down_cmd)
+        print("\n\nScale Up Command:\n\n", scale_up_cmd)
+
+if __name__ == "__main__":
+    main()
